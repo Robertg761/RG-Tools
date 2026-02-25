@@ -70,6 +70,9 @@ jobs:
       - name: Force fresh GitHub data pull
         run: rm -rf .next/cache/fetch-cache
       - name: Build with Next.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: Robertg761
         run: ${{ steps.detect-package-manager.outputs.runner }} next build --webpack
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

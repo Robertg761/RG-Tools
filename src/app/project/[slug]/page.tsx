@@ -4,7 +4,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Github, Star, GitFork, AlertCircle, Calendar } from "lucide-react";
+import { ArrowLeft, Github, Star, GitFork, AlertCircle, Calendar, Download } from "lucide-react";
 import { TableOfContents } from "@/components/TableOfContents";
 import { ProjectMediaGallery } from "@/components/ProjectMediaGallery";
 import {
@@ -21,6 +21,174 @@ interface PageProps {
 
 export const dynamicParams = false;
 
+interface ReleaseAsset {
+  id: number;
+  name: string;
+  downloadUrl: string;
+  size: number;
+}
+
+type Platform = "windows" | "macos" | "linux" | "android";
+
+const PLATFORM_LABELS: Record<Platform, string> = {
+  windows: "Windows",
+  macos: "macOS",
+  linux: "Linux",
+  android: "Android",
+};
+
+function isNoiseAsset(assetName: string) {
+  const name = assetName.toLowerCase();
+  const noisePatterns = [
+    /sha(1|224|256|384|512)/,
+    /checksum/,
+    /\.sig$/,
+    /\.asc$/,
+    /\.pem$/,
+    /\.crt$/,
+    /\.blockmap$/,
+    /\.pdb$/,
+    /symbols?/,
+    /debug/,
+    /\.dsym/,
+  ];
+
+  return noisePatterns.some((pattern) => pattern.test(name));
+}
+
+function detectPlatform(assetName: string): Platform | null {
+  const name = assetName.toLowerCase();
+
+  if (/\.apk$/.test(name) || /android/.test(name)) {
+    return "android";
+  }
+
+  if (/\.(exe|msi|msix)$/.test(name) || /(windows|win32|win64|setup|installer)/.test(name)) {
+    return "windows";
+  }
+
+  if (/\.(dmg|pkg)$/.test(name) || /(macos|darwin|osx|apple|universal2)/.test(name)) {
+    return "macos";
+  }
+
+  if (/\.(appimage|deb|rpm)$/.test(name) || /(linux|ubuntu|fedora|arch)/.test(name)) {
+    return "linux";
+  }
+
+  return null;
+}
+
+function getPlatformAssetScore(platform: Platform, assetName: string) {
+  const name = assetName.toLowerCase();
+
+  if (platform === "windows") {
+    if (/\.(exe|msi|msix)$/.test(name)) {
+      return 120;
+    }
+    if (/(setup|installer)/.test(name)) {
+      return 110;
+    }
+    if (/\.zip$/.test(name)) {
+      return 80;
+    }
+  }
+
+  if (platform === "macos") {
+    if (/\.(dmg|pkg)$/.test(name)) {
+      return 120;
+    }
+    if (/\.zip$/.test(name)) {
+      return 85;
+    }
+  }
+
+  if (platform === "linux") {
+    if (/\.appimage$/.test(name)) {
+      return 125;
+    }
+    if (/\.(deb|rpm)$/.test(name)) {
+      return 120;
+    }
+    if (/\.(tar\.gz|tgz|tar\.xz|zip|7z)$/.test(name)) {
+      return 80;
+    }
+  }
+
+  if (platform === "android") {
+    if (/\.apk$/.test(name)) {
+      return 130;
+    }
+    if (/android/.test(name)) {
+      return 100;
+    }
+  }
+
+  if (/\.(zip|tar\.gz|tgz|tar\.xz|7z)$/.test(name)) {
+    return 70;
+  }
+
+  return 40;
+}
+
+function pickPrimaryDownloadAsset(assets: ReleaseAsset[]) {
+  if (assets.length === 0) {
+    return null;
+  }
+
+  return [...assets].sort((a, b) => {
+    const scoreDiff = getPlatformAssetScore("windows", b.name) - getPlatformAssetScore("windows", a.name);
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+
+    const sizeDiff = b.size - a.size;
+    if (sizeDiff !== 0) {
+      return sizeDiff;
+    }
+
+    return a.name.localeCompare(b.name);
+  })[0];
+}
+
+function pickBestAssetForPlatform(assets: ReleaseAsset[], platform: Platform) {
+  const platformAssets = assets.filter((asset) => detectPlatform(asset.name) === platform);
+  if (platformAssets.length === 0) {
+    return null;
+  }
+
+  return [...platformAssets].sort((a, b) => {
+    const scoreDiff = getPlatformAssetScore(platform, b.name) - getPlatformAssetScore(platform, a.name);
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+
+    const sizeDiff = b.size - a.size;
+    if (sizeDiff !== 0) {
+      return sizeDiff;
+    }
+
+    return a.name.localeCompare(b.name);
+  })[0];
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes <= 0) {
+    return "";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let index = 0;
+
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+
+  const rounded = value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${rounded} ${units[index]}`;
+}
+
 export async function generateStaticParams() {
   const projects = await getAllPublicProjects();
   return projects.map((project) => ({ slug: toProjectSlug(project.repoName) }));
@@ -34,9 +202,21 @@ export default async function ProjectPage({ params }: PageProps) {
     notFound();
   }
 
-  const { repoData, readme, branch } = data;
+  const { repoData, readme, branch, latestRelease } = data;
   const images = extractProjectImages(readme, repoData.name, branch);
   const cleanReadme = stripProjectImages(readme);
+  const filteredReleaseAssets = latestRelease
+    ? latestRelease.assets.filter((asset) => !isNoiseAsset(asset.name))
+    : [];
+  const platformDownloads = (["windows", "macos", "android", "linux"] as Platform[])
+    .map((platform) => ({
+      platform,
+      asset: pickBestAssetForPlatform(filteredReleaseAssets, platform),
+    }))
+    .filter((entry): entry is { platform: Platform; asset: ReleaseAsset } => Boolean(entry.asset));
+  const primaryDownloadAsset = pickPrimaryDownloadAsset(filteredReleaseAssets);
+  const platformAssetIds = new Set(platformDownloads.map((entry) => entry.asset.id));
+  const advancedAssets = filteredReleaseAssets.filter((asset) => !platformAssetIds.has(asset.id));
 
   return (
     <div className="min-h-screen pb-24">
@@ -94,7 +274,106 @@ export default async function ProjectPage({ params }: PageProps) {
               <Github size={20} />
               View on GitHub
             </a>
+            {latestRelease && filteredReleaseAssets.length === 0 && latestRelease.url && (
+              <a
+                href={latestRelease.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-8 py-4 bg-accent text-white rounded-full transition-all hover:scale-105 active:scale-95 font-bold shadow-xl"
+              >
+                <Download size={20} />
+                View Latest Release
+              </a>
+            )}
           </div>
+
+          {latestRelease && filteredReleaseAssets.length > 0 && (
+            <div className="mt-8 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-6 backdrop-blur-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200/90 mb-2">
+                Latest Release Downloads
+              </p>
+              <p className="text-lg text-white mb-4">
+                {latestRelease.name}
+                {latestRelease.publishedAt && (
+                  <span className="text-white/60 text-sm ml-2">
+                    ({new Date(latestRelease.publishedAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })})
+                  </span>
+                )}
+              </p>
+              {platformDownloads.length > 0 && (
+                <div className="flex flex-wrap gap-3 mb-4">
+                  {platformDownloads.map((entry) => (
+                    <a
+                      key={entry.platform}
+                      href={entry.asset.downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-emerald-500/35 border border-emerald-300/50 text-emerald-50 hover:bg-emerald-500/45 transition-colors font-semibold"
+                    >
+                      <Download size={18} />
+                      Download for {PLATFORM_LABELS[entry.platform]}
+                    </a>
+                  ))}
+                </div>
+              )}
+              {platformDownloads.length === 0 && primaryDownloadAsset && (
+                <a
+                  href={primaryDownloadAsset.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-emerald-500/35 border border-emerald-300/50 text-emerald-50 hover:bg-emerald-500/45 transition-colors font-semibold mb-4"
+                >
+                  <Download size={18} />
+                  Download Latest
+                  <span className="text-emerald-100/90 text-sm">
+                    ({primaryDownloadAsset.name}
+                    {primaryDownloadAsset.size > 0
+                      ? `, ${formatFileSize(primaryDownloadAsset.size)}`
+                      : ""}
+                    )
+                  </span>
+                </a>
+              )}
+              {advancedAssets.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-sm text-emerald-100/90 hover:text-emerald-50 select-none">
+                    Advanced downloads ({advancedAssets.length})
+                  </summary>
+                  <div className="flex flex-wrap gap-3 mt-3">
+                    {advancedAssets.map((asset) => (
+                      <a
+                        key={asset.id}
+                        href={asset.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/25 border border-emerald-300/40 text-emerald-50 hover:bg-emerald-500/35 transition-colors"
+                      >
+                        <Download size={16} />
+                        <span>{asset.name}</span>
+                        {asset.size > 0 && <span className="text-emerald-100/80 text-xs">({formatFileSize(asset.size)})</span>}
+                      </a>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {latestRelease.url && (
+                <div className="mt-4">
+                  <a
+                    href={latestRelease.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-emerald-100/90 hover:text-emerald-50 underline underline-offset-4"
+                  >
+                    View all release files
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

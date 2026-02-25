@@ -1,8 +1,23 @@
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
+
 const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim() || "Robertg761";
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN?.trim() || "";
 const GITHUB_API_BASE = "https://api.github.com";
 const EXCLUDED_REPOSITORY_KEYS = new Set(["rgtools"]);
 const STAR_WEIGHT = 0.55;
 const RECENCY_WEIGHT = 0.45;
+const GITHUB_RETRY_STATUSES = new Set([403, 429, 500, 502, 503, 504]);
+const DEFAULT_MAX_RETRIES = 2;
+const RELEASE_FETCH_CONCURRENCY = 5;
+const IS_CI = process.env.CI === "true";
+const BUILD_CACHE_PATH = join(
+  process.cwd(),
+  ".next",
+  "cache",
+  "project-index-cache.json"
+);
+const HOT_BUILD_CACHE_MAX_AGE_MS = 1000 * 60 * 5;
 
 interface GitHubRepo {
   id: number;
@@ -31,6 +46,31 @@ interface GitHubRelease {
   name?: string | null;
   published_at?: string | null;
   created_at?: string;
+  html_url?: string;
+  assets?: GitHubReleaseAsset[];
+}
+
+interface GitHubReleaseAsset {
+  id: number;
+  name?: string;
+  browser_download_url?: string;
+  size?: number;
+  state?: string;
+}
+
+interface ProjectReleaseAsset {
+  id: number;
+  name: string;
+  downloadUrl: string;
+  size: number;
+}
+
+interface ProjectRelease {
+  tag: string;
+  name: string;
+  url: string;
+  publishedAt: string | null;
+  assets: ProjectReleaseAsset[];
 }
 
 export interface Project {
@@ -48,6 +88,14 @@ interface ProjectDetail {
   repoData: GitHubRepo;
   readme: string;
   branch: string;
+  latestRelease: ProjectRelease | null;
+}
+
+const latestReleaseCache = new Map<string, Promise<GitHubRelease | null>>();
+
+interface ProjectCachePayload {
+  updatedAt: number;
+  projects: Project[];
 }
 
 function normalizeRepositoryKey(name: string) {
@@ -59,24 +107,77 @@ function isExcludedRepository(name: string) {
 }
 
 function buildGitHubHeaders() {
-  const token = process.env.GITHUB_TOKEN?.trim();
   return {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(GITHUB_TOKEN ? { Authorization: `Bearer ${GITHUB_TOKEN}` } : {}),
   };
 }
 
-async function fetchGitHubJson<T>(url: string): Promise<T | null> {
-  const response = await fetch(url, {
-    headers: buildGitHubHeaders(),
-  });
+async function readBuildProjectCache(maxAgeMs?: number) {
+  try {
+    const raw = await fs.readFile(BUILD_CACHE_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as ProjectCachePayload;
+    if (!Array.isArray(parsed.projects) || typeof parsed.updatedAt !== "number") {
+      return null;
+    }
 
-  if (!response.ok) {
+    if (typeof maxAgeMs === "number" && Date.now() - parsed.updatedAt > maxAgeMs) {
+      return null;
+    }
+
+    return parsed.projects;
+  } catch {
     return null;
   }
+}
 
-  return (await response.json()) as T;
+async function writeBuildProjectCache(projects: Project[]) {
+  try {
+    const payload: ProjectCachePayload = {
+      updatedAt: Date.now(),
+      projects,
+    };
+    await fs.mkdir(join(process.cwd(), ".next", "cache"), { recursive: true });
+    await fs.writeFile(BUILD_CACHE_PATH, JSON.stringify(payload), "utf-8");
+  } catch {
+    // Best-effort cache only.
+  }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchGitHubJson<T>(url: string, maxRetries = DEFAULT_MAX_RETRIES): Promise<T | null> {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: buildGitHubHeaders(),
+      });
+
+      if (response.ok) {
+        return (await response.json()) as T;
+      }
+
+      if (response.status === 404) {
+        return null;
+      }
+
+      const isRetryable = GITHUB_RETRY_STATUSES.has(response.status);
+      if (!isRetryable || attempt === maxRetries) {
+        return null;
+      }
+    } catch {
+      if (attempt === maxRetries) {
+        return null;
+      }
+    }
+
+    await wait(500 * (attempt + 1));
+  }
+
+  return null;
 }
 
 function normalizeTag(value: string) {
@@ -112,6 +213,38 @@ function formatVersionDate(dateString: string) {
 function formatReleaseVersion(release: GitHubRelease) {
   const tag = release.tag_name?.trim() || release.name?.trim() || "Release";
   return `Latest Release: ${tag}`;
+}
+
+function toProjectRelease(release: GitHubRelease | null): ProjectRelease | null {
+  if (!release) {
+    return null;
+  }
+
+  const tag = release.tag_name?.trim() || "Release";
+  const name = release.name?.trim() || tag;
+  const assets = (release.assets ?? [])
+    .filter(
+      (
+        asset
+      ): asset is GitHubReleaseAsset & { browser_download_url: string } =>
+        (asset.state ?? "uploaded") === "uploaded" &&
+        typeof asset.browser_download_url === "string" &&
+        asset.browser_download_url.length > 0
+    )
+    .map((asset) => ({
+      id: asset.id,
+      name: asset.name?.trim() || "Download",
+      downloadUrl: asset.browser_download_url,
+      size: typeof asset.size === "number" ? asset.size : 0,
+    }));
+
+  return {
+    tag,
+    name,
+    url: release.html_url?.trim() || "",
+    publishedAt: release.published_at || release.created_at || null,
+    assets,
+  };
 }
 
 function toTimestamp(value: string) {
@@ -188,28 +321,19 @@ function toProject(repo: GitHubRepo, latestRelease: GitHubRelease | null): Proje
 }
 
 async function fetchLatestRepoRelease(repoName: string): Promise<GitHubRelease | null> {
-  try {
-    const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${encodeURIComponent(
-        GITHUB_OWNER
-      )}/${encodeURIComponent(repoName)}/releases/latest`,
-      {
-        headers: buildGitHubHeaders(),
-      }
-    );
-
-    if (response.status === 404) {
-      return null;
-    }
-
-    if (!response.ok) {
-      return null;
-    }
-
-    return (await response.json()) as GitHubRelease;
-  } catch {
-    return null;
+  const cacheKey = normalizeRepositoryKey(repoName);
+  const cached = latestReleaseCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
+
+  const request = fetchGitHubJson<GitHubRelease>(
+    `${GITHUB_API_BASE}/repos/${encodeURIComponent(
+      GITHUB_OWNER
+    )}/${encodeURIComponent(repoName)}/releases/latest`
+  );
+  latestReleaseCache.set(cacheKey, request);
+  return request;
 }
 
 async function fetchAllPublicRepos(): Promise<GitHubRepo[]> {
@@ -222,7 +346,17 @@ async function fetchAllPublicRepos(): Promise<GitHubRepo[]> {
       )}/repos?type=public&sort=updated&direction=desc&per_page=100&page=${page}`
     );
 
-    if (!pageRepos || pageRepos.length === 0) {
+    if (!pageRepos) {
+      if (page === 1) {
+        if (IS_CI) {
+          throw new Error(`Unable to fetch public repositories for ${GITHUB_OWNER}.`);
+        }
+        return [];
+      }
+      break;
+    }
+
+    if (pageRepos.length === 0) {
       break;
     }
 
@@ -235,14 +369,84 @@ async function fetchAllPublicRepos(): Promise<GitHubRepo[]> {
     }
   }
 
+  if (repos.length === 0) {
+    if (IS_CI) {
+      throw new Error(`No public repositories returned for ${GITHUB_OWNER}.`);
+    }
+    return [];
+  }
+
   return rankReposForListing(repos);
 }
 
-export async function getAllPublicProjects(): Promise<Project[]> {
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+) {
+  if (items.length === 0) {
+    return [] as R[];
+  }
+
+  const results = new Array<R>(items.length);
+  let currentIndex = 0;
+
+  async function runWorker() {
+    while (currentIndex < items.length) {
+      const index = currentIndex;
+      currentIndex += 1;
+      results[index] = await mapper(items[index]);
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
+}
+
+async function loadAllPublicProjects(): Promise<Project[]> {
+  const hotCache = await readBuildProjectCache(HOT_BUILD_CACHE_MAX_AGE_MS);
+  if (hotCache && hotCache.length > 0) {
+    return hotCache;
+  }
+
   const repos = await fetchAllPublicRepos();
-  return Promise.all(
-    repos.map(async (repo) => toProject(repo, await fetchLatestRepoRelease(repo.name)))
+
+  const releases = await mapWithConcurrency(
+    repos,
+    RELEASE_FETCH_CONCURRENCY,
+    async (repo) => fetchLatestRepoRelease(repo.name)
   );
+  const projects = repos.map((repo, index) => toProject(repo, releases[index]));
+  await writeBuildProjectCache(projects);
+  return projects;
+}
+
+let allPublicProjectsPromise: Promise<Project[]> | null = null;
+let lastSuccessfulProjects: Project[] | null = null;
+
+export async function getAllPublicProjects(): Promise<Project[]> {
+  if (!allPublicProjectsPromise) {
+    allPublicProjectsPromise = loadAllPublicProjects();
+  }
+
+  try {
+    const projects = await allPublicProjectsPromise;
+    lastSuccessfulProjects = projects;
+    return projects;
+  } catch (error) {
+    allPublicProjectsPromise = null;
+    const cachedProjects = await readBuildProjectCache();
+    if (cachedProjects && cachedProjects.length > 0) {
+      lastSuccessfulProjects = cachedProjects;
+      return cachedProjects;
+    }
+    if (lastSuccessfulProjects) {
+      return lastSuccessfulProjects;
+    }
+
+    throw error;
+  }
 }
 
 export function toProjectSlug(repoName: string) {
@@ -283,10 +487,14 @@ export async function getProjectDetail(repoNameOrSlug: string): Promise<ProjectD
     return null;
   }
 
-  const readme = await fetchRepoReadme(repoData.name);
+  const [readme, latestReleaseRaw] = await Promise.all([
+    fetchRepoReadme(repoData.name),
+    fetchLatestRepoRelease(repoData.name),
+  ]);
   const branch = repoData.default_branch || "main";
+  const latestRelease = toProjectRelease(latestReleaseRaw);
 
-  return { repoData, readme, branch };
+  return { repoData, readme, branch, latestRelease };
 }
 
 function resolveRelativeImageUrl(url: string, repoName: string, branch: string) {
