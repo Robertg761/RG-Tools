@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { EarlyBuildBanner } from "@/components/EarlyBuildBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,7 +51,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased selection:bg-blue-500 selection:text-white`}
       >
         <Navbar />
-        <main className="min-h-screen pt-20">
+        <div className="pt-20">
+          <EarlyBuildBanner />
+        </div>
+        <main className="min-h-screen">
           {children}
         </main>
         <Footer />
