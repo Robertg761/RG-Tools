@@ -13,7 +13,7 @@ export function Navbar() {
       className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-background/80 backdrop-blur-md border-b border-white/10"
     >
       <div className="text-xl font-bold tracking-tighter">
-        <Link href="/">PORTFOLIO</Link>
+        <Link href="/">RG PROJECT DUMP</Link>
       </div>
       <nav className="hidden md:flex gap-8">
         <Link href="/#home" className="text-sm font-medium text-white/70 hover:text-white transition-colors">

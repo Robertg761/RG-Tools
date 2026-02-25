@@ -46,7 +46,7 @@ export default async function ProjectPage({ params }: PageProps) {
         <div className="max-w-7xl mx-auto relative z-10">
           <Link href="/#projects" className="inline-flex items-center gap-2 text-white/50 hover:text-white transition-colors mb-12 font-medium">
             <ArrowLeft size={20} />
-            Back to Portfolio
+            Back to RG Project Dump
           </Link>
 
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter mb-6 text-white drop-shadow-sm">{repoData.name}</h1>

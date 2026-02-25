@@ -16,10 +16,26 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://rgprojectdump.ca"),
-  title: "Personal Portfolio",
-  description: "A hub for my projects and releases",
+  title: {
+    default: "RG Project Dump",
+    template: "%s | RG Project Dump",
+  },
+  description: "RG Project Dump: a hub for projects, releases, and source code.",
+  applicationName: "RG Project Dump",
   alternates: {
     canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: "https://rgprojectdump.ca",
+    siteName: "RG Project Dump",
+    title: "RG Project Dump",
+    description: "A hub for projects, releases, and source code.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "RG Project Dump",
+    description: "A hub for projects, releases, and source code.",
   },
 };
 
