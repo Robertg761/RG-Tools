@@ -2,6 +2,8 @@ const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim() || "Robertg761";
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_REVALIDATE_SECONDS = 3600;
 const EXCLUDED_REPOSITORY_KEYS = new Set(["rgtools"]);
+const STAR_WEIGHT = 0.55;
+const RECENCY_WEIGHT = 0.45;
 
 interface GitHubRepo {
   id: number;
@@ -93,6 +95,60 @@ function formatVersionDate(dateString: string) {
   }).format(date)}`;
 }
 
+function toTimestamp(value: string) {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function getRepoActivityTimestamp(repo: GitHubRepo) {
+  return Math.max(toTimestamp(repo.pushed_at), toTimestamp(repo.updated_at));
+}
+
+function rankReposForListing(repos: GitHubRepo[]) {
+  if (repos.length <= 1) {
+    return repos;
+  }
+
+  const maxStars = Math.max(1, ...repos.map((repo) => Math.max(repo.stargazers_count, 0)));
+  const activities = repos.map((repo) => getRepoActivityTimestamp(repo));
+  const minActivity = Math.min(...activities);
+  const maxActivity = Math.max(...activities);
+  const activityRange = Math.max(1, maxActivity - minActivity);
+
+  const scored = repos.map((repo) => {
+    const stars = Math.max(repo.stargazers_count, 0);
+    const starsScore = Math.log1p(stars) / Math.log1p(maxStars);
+    const recencyScore = (getRepoActivityTimestamp(repo) - minActivity) / activityRange;
+    const combinedScore = starsScore * STAR_WEIGHT + recencyScore * RECENCY_WEIGHT;
+
+    return {
+      repo,
+      combinedScore,
+      stars,
+      activity: getRepoActivityTimestamp(repo),
+    };
+  });
+
+  scored.sort((a, b) => {
+    const scoreDiff = b.combinedScore - a.combinedScore;
+    if (Math.abs(scoreDiff) > 1e-9) {
+      return scoreDiff;
+    }
+
+    if (b.stars !== a.stars) {
+      return b.stars - a.stars;
+    }
+
+    if (b.activity !== a.activity) {
+      return b.activity - a.activity;
+    }
+
+    return a.repo.name.localeCompare(b.repo.name);
+  });
+
+  return scored.map((entry) => entry.repo);
+}
+
 function toProject(repo: GitHubRepo): Project {
   const topicTags = (repo.topics ?? []).slice(0, 3).map(normalizeTag);
   const languageTag = repo.language ? [repo.language] : [];
@@ -133,7 +189,7 @@ async function fetchAllPublicRepos(): Promise<GitHubRepo[]> {
     }
   }
 
-  return repos;
+  return rankReposForListing(repos);
 }
 
 export async function getAllPublicProjects(): Promise<Project[]> {
