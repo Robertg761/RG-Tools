@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { getAllPublicProjects, toProjectSlug } from "@/lib/projects";
 
 const BASE_URL = "https://rgprojectdump.ca";
-export const revalidate = 3600;
+export const dynamic = "force-static";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();

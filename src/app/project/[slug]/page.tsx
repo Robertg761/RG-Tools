@@ -7,13 +7,24 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Github, Star, GitFork, AlertCircle, Calendar } from "lucide-react";
 import { TableOfContents } from "@/components/TableOfContents";
 import { ProjectMediaGallery } from "@/components/ProjectMediaGallery";
-import { extractProjectImages, getProjectDetail, stripProjectImages } from "@/lib/projects";
+import {
+  extractProjectImages,
+  getAllPublicProjects,
+  getProjectDetail,
+  stripProjectImages,
+  toProjectSlug,
+} from "@/lib/projects";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export const revalidate = 3600;
+export const dynamicParams = false;
+
+export async function generateStaticParams() {
+  const projects = await getAllPublicProjects();
+  return projects.map((project) => ({ slug: toProjectSlug(project.repoName) }));
+}
 
 export default async function ProjectPage({ params }: PageProps) {
   const { slug } = await params;

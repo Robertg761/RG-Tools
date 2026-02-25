@@ -3,8 +3,6 @@ import { Projects } from "@/components/Projects";
 import { Contact } from "@/components/Contact";
 import { getAllPublicProjects } from "@/lib/projects";
 
-export const revalidate = 3600;
-
 export default async function Home() {
   const projects = await getAllPublicProjects();
 

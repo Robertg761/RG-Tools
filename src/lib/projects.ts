@@ -1,6 +1,5 @@
 const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim() || "Robertg761";
 const GITHUB_API_BASE = "https://api.github.com";
-const GITHUB_REVALIDATE_SECONDS = 3600;
 const EXCLUDED_REPOSITORY_KEYS = new Set(["rgtools"]);
 const STAR_WEIGHT = 0.55;
 const RECENCY_WEIGHT = 0.45;
@@ -64,7 +63,6 @@ function buildGitHubHeaders() {
 async function fetchGitHubJson<T>(url: string): Promise<T | null> {
   const response = await fetch(url, {
     headers: buildGitHubHeaders(),
-    next: { revalidate: GITHUB_REVALIDATE_SECONDS },
   });
 
   if (!response.ok) {
