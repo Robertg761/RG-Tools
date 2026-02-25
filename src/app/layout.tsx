@@ -15,8 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://rgprojectdump.ca"),
   title: "Personal Portfolio",
   description: "A hub for my projects and releases",
+  alternates: {
+    canonical: "/",
+  },
 };
 
 export default function RootLayout({
