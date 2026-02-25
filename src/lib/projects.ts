@@ -26,6 +26,13 @@ interface GitHubReadme {
   encoding?: string;
 }
 
+interface GitHubRelease {
+  tag_name?: string;
+  name?: string | null;
+  published_at?: string | null;
+  created_at?: string;
+}
+
 export interface Project {
   id: number;
   title: string;
@@ -80,17 +87,31 @@ function normalizeTag(value: string) {
     .join(" ");
 }
 
-function formatVersionDate(dateString: string) {
+function formatDate(dateString: string) {
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) {
-    return "Public Repository";
+    return null;
   }
 
-  return `Updated ${new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(date)}`;
+  }).format(date);
+}
+
+function formatVersionDate(dateString: string) {
+  const formattedDate = formatDate(dateString);
+  if (!formattedDate) {
+    return "Public Repository";
+  }
+
+  return `Updated ${formattedDate}`;
+}
+
+function formatReleaseVersion(release: GitHubRelease) {
+  const tag = release.tag_name?.trim() || release.name?.trim() || "Release";
+  return `Latest Release: ${tag}`;
 }
 
 function toTimestamp(value: string) {
@@ -147,7 +168,7 @@ function rankReposForListing(repos: GitHubRepo[]) {
   return scored.map((entry) => entry.repo);
 }
 
-function toProject(repo: GitHubRepo): Project {
+function toProject(repo: GitHubRepo, latestRelease: GitHubRelease | null): Project {
   const topicTags = (repo.topics ?? []).slice(0, 3).map(normalizeTag);
   const languageTag = repo.language ? [repo.language] : [];
   const tags = [...new Set([...languageTag, ...topicTags])];
@@ -157,11 +178,38 @@ function toProject(repo: GitHubRepo): Project {
     title: repo.name,
     repoName: repo.name,
     description: repo.description?.trim() || "No description provided yet.",
-    version: formatVersionDate(repo.pushed_at || repo.updated_at),
+    version: latestRelease
+      ? formatReleaseVersion(latestRelease)
+      : formatVersionDate(repo.pushed_at || repo.updated_at),
     tags: tags.length > 0 ? tags : ["Public Repo"],
     link: repo.html_url,
     bugLink: `${repo.html_url}/issues`,
   };
+}
+
+async function fetchLatestRepoRelease(repoName: string): Promise<GitHubRelease | null> {
+  try {
+    const response = await fetch(
+      `${GITHUB_API_BASE}/repos/${encodeURIComponent(
+        GITHUB_OWNER
+      )}/${encodeURIComponent(repoName)}/releases/latest`,
+      {
+        headers: buildGitHubHeaders(),
+      }
+    );
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as GitHubRelease;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchAllPublicRepos(): Promise<GitHubRepo[]> {
@@ -192,7 +240,9 @@ async function fetchAllPublicRepos(): Promise<GitHubRepo[]> {
 
 export async function getAllPublicProjects(): Promise<Project[]> {
   const repos = await fetchAllPublicRepos();
-  return repos.map(toProject);
+  return Promise.all(
+    repos.map(async (repo) => toProject(repo, await fetchLatestRepoRelease(repo.name)))
+  );
 }
 
 export function toProjectSlug(repoName: string) {

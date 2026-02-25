@@ -34,7 +34,13 @@ export function Projects({ projects }: ProjectsProps) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {projects.map((project, idx) => (
+        {projects.map((project, idx) => {
+          const isLatestRelease = project.version.startsWith("Latest Release:");
+          const versionBadgeClass = isLatestRelease
+            ? "text-xs font-mono px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
+            : "text-xs font-mono px-2 py-1 rounded-full bg-white/10 text-white/70";
+
+          return (
           <motion.div
             key={project.id}
             initial={{ opacity: 0, y: 30 }}
@@ -58,7 +64,7 @@ export function Projects({ projects }: ProjectsProps) {
                     </Link>
                   </h3>
                 </div>
-                <span className="text-xs font-mono px-2 py-1 rounded-full bg-white/10 text-white/70">
+                <span className={versionBadgeClass}>
                   {project.version}
                 </span>
               </div>
@@ -95,7 +101,8 @@ export function Projects({ projects }: ProjectsProps) {
               </div>
             </div>
           </motion.div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
