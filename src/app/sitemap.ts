@@ -1,14 +1,14 @@
 import type { MetadataRoute } from "next";
-import { PROJECTS } from "@/lib/projects";
-
-export const dynamic = "force-static";
+import { getAllPublicProjects, toProjectSlug } from "@/lib/projects";
 
 const BASE_URL = "https://rgprojectdump.ca";
+export const revalidate = 3600;
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  const projectPages = PROJECTS.map((project) => ({
-    url: `${BASE_URL}/project/${project.repoName}`,
+  const projects = await getAllPublicProjects();
+  const projectPages = projects.map((project) => ({
+    url: `${BASE_URL}/project/${toProjectSlug(project.repoName)}`,
     lastModified: now,
     changeFrequency: "weekly" as const,
     priority: 0.8,

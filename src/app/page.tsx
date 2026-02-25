@@ -1,12 +1,17 @@
 import { Hero } from "@/components/Hero";
 import { Projects } from "@/components/Projects";
 import { Contact } from "@/components/Contact";
+import { getAllPublicProjects } from "@/lib/projects";
 
-export default function Home() {
+export const revalidate = 3600;
+
+export default async function Home() {
+  const projects = await getAllPublicProjects();
+
   return (
     <div className="flex flex-col w-full overflow-hidden">
       <Hero />
-      <Projects />
+      <Projects projects={projects} />
       <Contact />
     </div>
   );

@@ -3,9 +3,13 @@
 import { motion } from "framer-motion";
 import { ExternalLink, Bug, TerminalSquare } from "lucide-react";
 import Link from "next/link";
-import { PROJECTS } from "@/lib/projects";
+import type { Project } from "@/lib/projects";
 
-export function Projects() {
+interface ProjectsProps {
+  projects: Project[];
+}
+
+export function Projects({ projects }: ProjectsProps) {
   return (
     <section id="projects" className="py-24 px-6 max-w-7xl mx-auto">
       <motion.div
@@ -17,12 +21,20 @@ export function Projects() {
       >
         <h2 className="text-4xl md:text-5xl font-bold tracking-tighter mb-4">Latest Projects</h2>
         <p className="text-white/60 max-w-2xl mx-auto">
-          Here you&apos;ll find information about my current software releases, upcoming features, and a place to report any issues you encounter.
+          Every public repository is synced directly from GitHub and formatted for a consistent browsing experience.
         </p>
       </motion.div>
 
+      {projects.length === 0 && (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-10 text-center">
+          <p className="text-white/70">
+            No public repositories are available right now. Please check again shortly.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {PROJECTS.map((project, idx) => (
+        {projects.map((project, idx) => (
           <motion.div
             key={project.id}
             initial={{ opacity: 0, y: 30 }}
@@ -58,7 +70,7 @@ export function Projects() {
               
               <div className="flex items-center gap-4 pt-4 border-t border-white/10 mt-auto">
                 <Link
-                  href={`/project/${project.repoName}`}
+                  href={`/project/${encodeURIComponent(project.repoName)}`}
                   className="flex items-center gap-2 text-sm font-medium hover:text-accent transition-colors"
                 >
                   <ExternalLink size={16} />

@@ -1,102 +1,31 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
-import rehypeSlug from 'rehype-slug';
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { ArrowLeft, Github, Star, GitFork, AlertCircle, Calendar } from 'lucide-react';
-import { TableOfContents } from '@/components/TableOfContents';
-import { ProjectMediaGallery } from '@/components/ProjectMediaGallery';
-import { PROJECTS } from '@/lib/projects';
-
-async function getRepoData(repoName: string) {
-  const repoRes = await fetch(`https://api.github.com/repos/Robertg761/${repoName}`, { next: { revalidate: 3600 } });
-  if (!repoRes.ok) return null;
-  const repoData = await repoRes.json();
-  
-  const branch = repoData.default_branch || 'main';
-  let readmeRes = await fetch(`https://raw.githubusercontent.com/Robertg761/${repoName}/${branch}/README.md`, { next: { revalidate: 3600 } });
-  
-  if (!readmeRes.ok && branch === 'main') {
-    readmeRes = await fetch(`https://raw.githubusercontent.com/Robertg761/${repoName}/master/README.md`, { next: { revalidate: 3600 } });
-  }
-
-  const readme = readmeRes.ok ? await readmeRes.text() : '';
-
-  return { repoData, readme, branch: branch === 'main' && !readmeRes.ok ? 'master' : branch };
-}
-
-function extractImages(markdown: string, repoName: string, branch: string) {
-  const images: string[] = [];
-  const mdRegex = /!\[.*?\]\(([^\)]+)\)/g;
-  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-  
-  let match;
-  while ((match = mdRegex.exec(markdown)) !== null) {
-    images.push(match[1].trim());
-  }
-  while ((match = htmlRegex.exec(markdown)) !== null) {
-    images.push(match[1].trim());
-  }
-
-  // Common badge, CI, license, and sponsor domains/patterns to ignore
-  const ignoredPatterns = [
-    /shields\.io/i,
-    /badge/i,
-    /travis-ci/i,
-    /circleci/i,
-    /sonarcloud/i,
-    /codecov/i,
-    /coveralls/i,
-    /appveyor/i,
-    /opencollective/i,
-    /ko-fi/i,
-    /buymeacoffee/i,
-    /sponsor/i,
-    /license/i,
-    /actions\/workflows/i,
-    /github\.com\/.*\/badges\//i,
-    /github\.com\/.*\/actions\//i,
-    /\.svg/i // Most badges are SVGs, and regular screenshots are PNG/JPG
-  ];
-
-  // Deduplicate and resolve relative URLs
-  return Array.from(new Set(images))
-    .filter(url => !ignoredPatterns.some(pattern => pattern.test(url)))
-    .map(url => {
-      if (url.startsWith('http') || url.startsWith('data:')) return url;
-      return `https://raw.githubusercontent.com/Robertg761/${repoName}/${branch}/${url.replace(/^\.\//, '')}`;
-    });
-}
-
-function stripImages(markdown: string) {
-  const mdRegex = /!\[.*?\]\(([^\)]+)\)/g;
-  const htmlRegex = /<img[^>]*>/gi;
-  // We also want to strip out typical status badges if possible, but taking out images removes most of them.
-  return markdown.replace(mdRegex, '').replace(htmlRegex, '');
-}
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+import rehypeSlug from "rehype-slug";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Github, Star, GitFork, AlertCircle, Calendar } from "lucide-react";
+import { TableOfContents } from "@/components/TableOfContents";
+import { ProjectMediaGallery } from "@/components/ProjectMediaGallery";
+import { extractProjectImages, getProjectDetail, stripProjectImages } from "@/lib/projects";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export const dynamicParams = false;
-
-export async function generateStaticParams() {
-  return PROJECTS.map((project) => ({ slug: project.repoName }));
-}
+export const revalidate = 3600;
 
 export default async function ProjectPage({ params }: PageProps) {
   const { slug } = await params;
-  const data = await getRepoData(slug);
+  const data = await getProjectDetail(slug);
 
   if (!data) {
     notFound();
   }
 
   const { repoData, readme, branch } = data;
-  const images = extractImages(readme, slug, branch);
-  const cleanReadme = stripImages(readme);
+  const images = extractProjectImages(readme, repoData.name, branch);
+  const cleanReadme = stripProjectImages(readme);
 
   return (
     <div className="min-h-screen pb-24">
@@ -108,12 +37,12 @@ export default async function ProjectPage({ params }: PageProps) {
             <ArrowLeft size={20} />
             Back to Portfolio
           </Link>
-          
+
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter mb-6 text-white drop-shadow-sm">{repoData.name}</h1>
           <p className="text-xl md:text-2xl text-white/70 max-w-3xl leading-relaxed mb-10 font-light">
-            {repoData.description || 'No description provided for this repository.'}
+            {repoData.description || "No description provided for this repository."}
           </p>
-          
+
           <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-white/70 mb-12">
             {repoData.language && (
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm">
@@ -135,12 +64,17 @@ export default async function ProjectPage({ params }: PageProps) {
             </div>
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm">
               <Calendar size={16} className="text-white/50" />
-              Updated {new Date(repoData.updated_at).toLocaleDateString()}
+              Updated{" "}
+              {new Date(repoData.updated_at).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-4">
-            <a 
+            <a
               href={repoData.html_url}
               target="_blank"
               rel="noopener noreferrer"
@@ -149,8 +83,8 @@ export default async function ProjectPage({ params }: PageProps) {
               <Github size={20} />
               View on GitHub
             </a>
-            {repoData.homepage && (
-              <a 
+            {repoData.homepage && repoData.homepage.trim().length > 0 && (
+              <a
                 href={repoData.homepage}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -177,10 +111,10 @@ export default async function ProjectPage({ params }: PageProps) {
               About the Project
             </h2>
           </div>
-          
+
           <article className="text-lg leading-relaxed text-white/80 font-light">
-            <ReactMarkdown 
-              remarkPlugins={[remarkGfm]} 
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw, rehypeSlug]}
               components={{
                 h1: () => null, // Hide H1 since we use the repo name in the hero
@@ -192,22 +126,22 @@ export default async function ProjectPage({ params }: PageProps) {
                 ol: ({ ...props }) => <ol className="list-decimal pl-6 space-y-4 mb-10 text-xl text-white/70" {...props} />,
                 li: ({ ...props }) => (
                   // Only add custom bullets to unordered lists, let ordered lists use default decimal
-                  <li className="text-xl text-white/70">
-                    {props.children}
-                  </li>
+                  <li className="text-xl text-white/70">{props.children}</li>
                 ),
                 a: ({ ...props }) => <a className="text-accent hover:text-accent/80 transition-colors underline underline-offset-4 decoration-accent/30 hover:decoration-accent" target="_blank" rel="noopener noreferrer" {...props} />,
                 blockquote: ({ ...props }) => (
                   <blockquote className="pl-6 border-l-4 border-accent/50 italic text-white/60 my-10 py-4 bg-gradient-to-r from-accent/5 to-transparent rounded-r-2xl" {...props} />
                 ),
                 code(props) {
-                  const {children, className, ...rest} = props;
-                  const match = /language-(\w+)/.exec(className || '');
+                  const { children, className, ...rest } = props;
+                  const match = /language-(\w+)/.exec(className || "");
                   // Consider it an inline code block if it doesn't have a specific language class
-                  const isInline = !match && !className?.includes('language-');
-                  
+                  const isInline = !match && !className?.includes("language-");
+
                   return isInline ? (
-                    <code className="bg-white/10 text-accent px-2 py-1 rounded-md font-mono text-[0.9em]" {...rest}>{children}</code>
+                    <code className="bg-white/10 text-accent px-2 py-1 rounded-md font-mono text-[0.9em]" {...rest}>
+                      {children}
+                    </code>
                   ) : (
                     <div className="my-10 rounded-2xl overflow-hidden bg-[#0a0a0a] border border-white/10 shadow-2xl relative group">
                       <div className="absolute top-0 left-0 right-0 h-8 bg-white/5 border-b border-white/10 flex items-center px-4 gap-2">
@@ -216,7 +150,7 @@ export default async function ProjectPage({ params }: PageProps) {
                         <div className="w-3 h-3 rounded-full bg-green-500/50" />
                       </div>
                       <div className="p-6 pt-12 overflow-x-auto">
-                        <code className={`block text-white/80 font-mono text-sm leading-loose ${className || ''}`} {...rest}>
+                        <code className={`block text-white/80 font-mono text-sm leading-loose ${className || ""}`} {...rest}>
                           {children}
                         </code>
                       </div>
@@ -244,7 +178,7 @@ export default async function ProjectPage({ params }: PageProps) {
               Project Media
               <div className="h-px bg-white/10 flex-grow" />
             </h3>
-            
+
             <ProjectMediaGallery images={images} />
           </div>
         </div>
