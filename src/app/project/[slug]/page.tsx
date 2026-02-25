@@ -83,16 +83,6 @@ export default async function ProjectPage({ params }: PageProps) {
               <Github size={20} />
               View on GitHub
             </a>
-            {repoData.homepage && repoData.homepage.trim().length > 0 && (
-              <a
-                href={repoData.homepage}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-8 py-4 bg-accent text-white rounded-full transition-all hover:scale-105 active:scale-95 font-bold shadow-[0_0_20px_rgba(59,130,246,0.4)]"
-              >
-                Visit Live Site
-              </a>
-            )}
           </div>
         </div>
       </div>
