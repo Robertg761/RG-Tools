@@ -5,6 +5,10 @@ on:
   push:
     branches: ["main"]
 
+  # Rebuild hourly to refresh GitHub-sourced content
+  schedule:
+    - cron: "0 * * * *"
+
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -63,6 +67,8 @@ jobs:
             ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json', '**/yarn.lock') }}-
       - name: Install dependencies
         run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
+      - name: Force fresh GitHub data pull
+        run: rm -rf .next/cache/fetch-cache
       - name: Build with Next.js
         run: ${{ steps.detect-package-manager.outputs.runner }} next build --webpack
       - name: Upload artifact
