@@ -49,7 +49,14 @@ export function Projects({ projects }: ProjectsProps) {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <TerminalSquare className="text-accent" size={24} />
-                  <h3 className="text-2xl font-bold">{project.title}</h3>
+                  <h3 className="text-2xl font-bold">
+                    <Link
+                      href={`/project/${encodeURIComponent(project.repoName)}`}
+                      className="hover:text-accent transition-colors"
+                    >
+                      {project.title}
+                    </Link>
+                  </h3>
                 </div>
                 <span className="text-xs font-mono px-2 py-1 rounded-full bg-white/10 text-white/70">
                   {project.version}
