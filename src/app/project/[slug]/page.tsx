@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, Github, Star, GitFork, AlertCircle, Calendar } from 'lucide-react';
 import { TableOfContents } from '@/components/TableOfContents';
 import { ProjectMediaGallery } from '@/components/ProjectMediaGallery';
+import { PROJECTS } from '@/lib/projects';
 
 async function getRepoData(repoName: string) {
   const repoRes = await fetch(`https://api.github.com/repos/Robertg761/${repoName}`, { next: { revalidate: 3600 } });
@@ -77,6 +78,12 @@ function stripImages(markdown: string) {
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+}
+
+export const dynamicParams = false;
+
+export async function generateStaticParams() {
+  return PROJECTS.map((project) => ({ slug: project.repoName }));
 }
 
 export default async function ProjectPage({ params }: PageProps) {
