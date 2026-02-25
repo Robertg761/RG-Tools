@@ -1,6 +1,7 @@
 const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim() || "Robertg761";
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_REVALIDATE_SECONDS = 3600;
+const EXCLUDED_REPOSITORY_KEYS = new Set(["rgtools"]);
 
 interface GitHubRepo {
   id: number;
@@ -39,6 +40,14 @@ interface ProjectDetail {
   repoData: GitHubRepo;
   readme: string;
   branch: string;
+}
+
+function normalizeRepositoryKey(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isExcludedRepository(name: string) {
+  return EXCLUDED_REPOSITORY_KEYS.has(normalizeRepositoryKey(name));
 }
 
 function buildGitHubHeaders() {
@@ -115,7 +124,9 @@ async function fetchAllPublicRepos(): Promise<GitHubRepo[]> {
       break;
     }
 
-    repos.push(...pageRepos.filter((repo) => !repo.private));
+    repos.push(
+      ...pageRepos.filter((repo) => !repo.private && !isExcludedRepository(repo.name))
+    );
 
     if (pageRepos.length < 100) {
       break;
@@ -164,7 +175,7 @@ export async function getProjectDetail(repoNameOrSlug: string): Promise<ProjectD
     )}/${encodeURIComponent(repoName)}`
   );
 
-  if (!repoData || repoData.private) {
+  if (!repoData || repoData.private || isExcludedRepository(repoData.name)) {
     return null;
   }
 
