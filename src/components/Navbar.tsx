@@ -2,7 +2,21 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Github, Twitter, Linkedin } from "lucide-react";
+import { Github } from "lucide-react";
+
+function XLogo({ size = 20 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M18.244 2h3.308l-7.227 8.26L23 22h-6.748l-5.285-6.918L4.91 22H1.6l7.73-8.835L1 2h6.92l4.778 6.32L18.244 2Zm-1.16 18h1.833L6.91 3.896H4.944L17.084 20Z" />
+    </svg>
+  );
+}
 
 export function Navbar() {
   return (
@@ -30,11 +44,8 @@ export function Navbar() {
         <Link href="https://github.com/Robertg761" target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition-colors">
           <Github size={20} />
         </Link>
-        <Link href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition-colors">
-          <Linkedin size={20} />
-        </Link>
         <Link href="https://x.com/Robertg761_" target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition-colors">
-          <Twitter size={20} />
+          <XLogo size={20} />
         </Link>
       </div>
     </motion.header>
