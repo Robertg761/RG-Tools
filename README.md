@@ -34,3 +34,13 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Analytics (GA4)
+
+This site is wired for Google Analytics 4 through `NEXT_PUBLIC_GA_MEASUREMENT_ID`.
+
+1. Create a GA4 web data stream and copy its Measurement ID (format: `G-XXXXXXXXXX`).
+2. Local development: add `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX` to `.env.local`.
+3. Production (GitHub Pages): set a repository secret named `NEXT_PUBLIC_GA_MEASUREMENT_ID` with the same value.
+
+If the env var is missing, analytics is automatically disabled.
