@@ -11,14 +11,13 @@ declare global {
   }
 }
 
-const GA_MEASUREMENT_ID =
-  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "G-19E39VTB7E";
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim();
 
 export function GoogleAnalytics() {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (typeof window.gtag !== "function") {
+    if (!GA_MEASUREMENT_ID || typeof window.gtag !== "function") {
       return;
     }
 
@@ -30,6 +29,10 @@ export function GoogleAnalytics() {
       page_title: document.title,
     });
   }, [pathname]);
+
+  if (!GA_MEASUREMENT_ID) {
+    return null;
+  }
 
   return (
     <>
