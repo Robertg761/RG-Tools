@@ -5,9 +5,9 @@ on:
   push:
     branches: ["main"]
 
-  # Rebuild hourly to refresh GitHub-sourced content
+  # Rebuild every 6 hours to refresh GitHub-sourced content
   schedule:
-    - cron: "0 * * * *"
+    - cron: "0 */6 * * *"
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
