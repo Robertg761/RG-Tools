@@ -6,6 +6,11 @@ import { Footer } from "@/components/Footer";
 import { EarlyBuildBanner } from "@/components/EarlyBuildBanner";
 import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 
+const siteUrl = new URL("https://rgprojectdump.ca");
+const socialImageUrl = new URL("/og-image.png", siteUrl);
+const siteTitle = "RG Project Dump";
+const siteDescription = "A hub for projects, releases, and source code.";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -17,27 +22,36 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://rgprojectdump.ca"),
+  metadataBase: siteUrl,
   title: {
-    default: "RG Project Dump",
-    template: "%s | RG Project Dump",
+    default: siteTitle,
+    template: `%s | ${siteTitle}`,
   },
-  description: "RG Project Dump: a hub for projects, releases, and source code.",
-  applicationName: "RG Project Dump",
+  description: siteDescription,
+  applicationName: siteTitle,
   alternates: {
-    canonical: "/",
+    canonical: siteUrl,
   },
   openGraph: {
+    title: siteTitle,
+    description: siteDescription,
+    url: siteUrl,
+    siteName: siteTitle,
     type: "website",
-    url: "https://rgprojectdump.ca",
-    siteName: "RG Project Dump",
-    title: "RG Project Dump",
-    description: "A hub for projects, releases, and source code.",
+    images: [
+      {
+        url: socialImageUrl,
+        width: 1200,
+        height: 630,
+        alt: `${siteTitle} social preview image`,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "RG Project Dump",
-    description: "A hub for projects, releases, and source code.",
+    title: siteTitle,
+    description: siteDescription,
+    images: [socialImageUrl],
   },
 };
 
